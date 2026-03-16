@@ -22,16 +22,17 @@ run_signal_sorter_post = false;
 run_qc_report = false;
 save_trace_trajectory_plots = true;
 save_stacked_dff_traces = true;
+save_trace_trajectory_per_cell = true;  % save one trace plot per cell (full-length raw; subfolder trace_trajectories_per_cell)
 trace_plot_n_cells = 30;
 ca_frame_rate_hz = 30;
-n_frames_check = 100;  % set 0 for fastest iteration
+n_frames_check = 100;  % set >0 for quality-check videos: 01_after_downsampling, 02_after_MC, 03_after_denoise, 04_EXTRACT_overlay. Set 0 to skip.
 
 % Fast ROI-detection mode (EXTRACT only). Other pipeline parts remain full-rate/full-size.
 fast_detect_mode = true;
 detect_downsample_time_by = 4;   % e.g., 30 Hz -> 7.5 Hz for detection/refinement
 detect_downsample_space_by = 1;  % keep spatial resolution to preserve small ROIs
 
-% ========== PATHS (edit for your machine) ==========
+% ========== PATHS ==========
 EXTRACT_path   = 'C:\Users\hsollim\Documents\MATLAB\MATLAB\EXTRACT-public';
 NoRMCorre_path = 'C:\Users\hsollim\Documents\MATLAB\MATLAB\NoRMCorre';
 ActSort_path   = 'C:\Users\hsollim\Documents\MATLAB\MATLAB\ActSort-public-main';
@@ -103,6 +104,10 @@ else
     disp('Motion correction...');
     [motion_corrected_data, ~, ~] = normcorre_batch(downsampled_data, options_mc);
     clear downsampled_data;
+    if n_frames_check > 0
+        write_check_video(motion_corrected_data, '02_check_after_motion_correction.avi', n_frames_check);
+        disp('  Saved: 02_check_after_motion_correction.avi');
+    end
 
     disp('Denoising (spatial Gaussian only; preserve temporal dynamics)...');
     denoised_data = zeros(size(motion_corrected_data), 'single');
@@ -449,6 +454,27 @@ if save_trace_trajectory_plots && ~isempty(deltaF_over_F) && size(deltaF_over_F,
     disp('  Saved: trace trajectory plots');
 end
 
+% Per-cell trace trajectory (each single cell, full-length raw)
+if save_trace_trajectory_per_cell && ~isempty(deltaF_over_F) && size(deltaF_over_F, 2) > 0
+    per_cell_dir = fullfile(output_folder, 'trace_trajectories_per_cell');
+    if ~isfolder(per_cell_dir), mkdir(per_cell_dir); end
+    if isempty(ca_frame_rate_hz) || ca_frame_rate_hz <= 0
+        x = 1:size(deltaF_over_F, 1); xlab = 'Frame';
+    else
+        x = (0:size(deltaF_over_F, 1)-1) / ca_frame_rate_hz; xlab = 'Time (s)';
+    end
+    n_cells_all = size(deltaF_over_F, 2);
+    for ci = 1:n_cells_all
+        fig_c = figure('Position', [100 100 1000 280], 'Visible', 'off');
+        plot(x, deltaF_over_F(:, ci), 'k', 'LineWidth', 0.8);
+        xlabel(xlab); ylabel('\DeltaF/F');
+        title(sprintf('Cell %d (full-length raw trace)', ci)); grid on;
+        saveas(fig_c, fullfile(per_cell_dir, sprintf('cell_%03d.png', ci)));
+        close(fig_c);
+    end
+    disp(['  Saved: ', num2str(n_cells_all), ' per-cell trace plots in trace_trajectories_per_cell/']);
+end
+
 % EXTRACT native cell map (manual §5.3)
 if exist('plot_output_cellmap', 'file') == 2
     fig5 = figure;
@@ -600,15 +626,9 @@ function write_qc_text(qc, config, fname)
     L{end+1} = sprintf('EXTRACT: radius=%d hp=%d steps=%d min_snr=%.2f T_snr=%.2f iter=%d', ...
         config.avg_cell_radius, qc.spatial_highpass_cutoff, config.cellfind_max_steps, ...
         config.cellfind_min_snr, config.thresholds.T_min_snr, config.max_iter);
-    if isfield(config, 'trace_output_option')
-        L{end+1} = sprintf('  eccent=%.1f corrupt=%.2f size=[%.2f %.1f] trace=%s', ...
-            config.thresholds.eccent_thresh, config.thresholds.spatial_corrupt_thresh, ...
-            config.thresholds.size_lower_limit, config.thresholds.size_upper_limit, config.trace_output_option);
-    else
-        L{end+1} = sprintf('  eccent=%.1f corrupt=%.2f size=[%.2f %.1f]', ...
-            config.thresholds.eccent_thresh, config.thresholds.spatial_corrupt_thresh, ...
-            config.thresholds.size_lower_limit, config.thresholds.size_upper_limit);
-    end
+    L{end+1} = sprintf('  eccent=%.1f corrupt=%.2f size=[%.2f %.1f] trace=%s', ...
+        config.thresholds.eccent_thresh, config.thresholds.spatial_corrupt_thresh, ...
+        config.thresholds.size_lower_limit, config.thresholds.size_upper_limit, config.trace_output_option);
     L{end+1} = sprintf('Morph: area>=%d ecc<=%.2f sol>=%.2f dff>=%.3f edge=%d', ...
         qc.morph.min_area_px, qc.morph.max_ecc, qc.morph.min_sol, qc.morph.min_peak_dff, qc.morph.edge_margin);
     L{end+1} = sprintf('%4s %6s %6s %5s %5s %5s %8s %6s','ID','Row','Col','Area','Ecc','Sol','PkDFF','SNR');
