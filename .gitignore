@@ -1,0 +1,20 @@
+# Data and large outputs (do not commit)
+*.tif
+*.tiff
+*.h5
+*.hdf5
+*.avi
+*.mat
+!config_mc.mat.example
+
+# MATLAB
+*.asv
+*.m~
+*.autosave
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Optional: keep example config only
+# *.mat
