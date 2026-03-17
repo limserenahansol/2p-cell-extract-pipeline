@@ -91,6 +91,7 @@ Pipeline follows the [EXTRACT user manual](https://github.com/schnitzer-lab/EXTR
 | `extract_preset` | `'permissive'` (dim cells) or `'stricter'` (colleague-style) |
 | `save_trace_trajectory_per_cell` | Save one trace plot per cell in `trace_trajectories_per_cell/` |
 | `save_trace_files` | Save raw + Z traces per session (`*_traces_raw_Z.mat`) |
+| `dff_trace_source` | `'extract'` (default) = ΔF/F traces for **all** EXTRACT+morph cells (matches overlay). `'signal_sorter'` = only SignalSorter-accepted cells (often very few if `automate=1`). |
 
 ## Outputs (both versions)
 

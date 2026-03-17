@@ -62,6 +62,9 @@ extract_preset = 'permissive';   % 'permissive' (yours: dim/small cells) | 'stri
 run_actsort_post = false;
 run_actsort_precompute = true;
 run_signal_sorter_post = true;
+% Trace/heatmap figures: 'extract' = all cells after EXTRACT+morph (matches yellow overlay).
+% 'signal_sorter' = only cells SignalSorter accepted (often very few with automate=1 — that caused "138 cells but 2 traces").
+dff_trace_source = 'extract';   % 'extract' | 'signal_sorter'
 run_qc_report = true;
 save_trace_trajectory_plots = true;
 save_stacked_dff_traces = true;
@@ -467,16 +470,29 @@ for file_idx = 1:n_files
         output_ps = output;
     end
 
+    n_extract = size(output.spatial_weights, 3);
+    n_sorted  = size(output_ps.spatial_weights, 3);
+    if run_signal_sorter_post && n_sorted < n_extract && strcmpi(dff_trace_source, 'signal_sorter')
+        disp(['SignalSorter kept ', num2str(n_sorted), ' of ', num2str(n_extract), ' cells — ΔF/F traces match that subset only.']);
+    elseif run_signal_sorter_post && n_sorted < n_extract && strcmpi(dff_trace_source, 'extract')
+        disp(['SignalSorter kept ', num2str(n_sorted), ' of ', num2str(n_extract), ' cells; ΔF/F figures use all ', num2str(n_extract), ' EXTRACT cells (dff_trace_source=''extract'').']);
+    end
+
     % ----- DeltaF/F and figures (use full-length raw traces, not binned) -----
-    temporal_weights = output_ps.temporal_weights;
+    if strcmpi(dff_trace_source, 'signal_sorter')
+        tw_out = output_ps;
+    else
+        tw_out = output;  % all morph-kept cells; matches cell_overlay_full_FOV
+    end
+    temporal_weights = tw_out.temporal_weights;
     T_full = size(denoised_data, 3);
     if extract_bin_time > 1 && size(temporal_weights, 1) < T_full
         % EXTRACT was run on binned data; project full-length denoised movie onto ROIs
         disp('Computing full-length traces (projecting raw denoised frames onto ROIs)...');
         [h, w, ~] = size(denoised_data);
-        n_cells_ps = size(output_ps.spatial_weights, 3);
+        n_cells_tw = size(tw_out.spatial_weights, 3);
         M_flat = reshape(single(denoised_data), h*w, T_full);
-        S_flat = reshape(output_ps.spatial_weights, h*w, n_cells_ps);
+        S_flat = reshape(tw_out.spatial_weights, h*w, n_cells_tw);
         temporal_weights = M_flat' * S_flat;  % (T_full x n_cells) full-length raw traces
     end
     F0 = mean(temporal_weights, 1);
@@ -592,9 +608,9 @@ for file_idx = 1:n_files
     save(fullfile(output_folder, base_filename), 'deltaF_over_F', 'max_peaks', 'top_cells_indices', '-append', '-v7.3');
     save(fullfile(output_folder, 'final_analysis_results.mat'), 'output', 'output_ps', 'deltaF_over_F', 'max_peaks', 'top_cells_indices', '-v7.3');
 
-    % Colleague-style trace export (Z + raw)
-    if save_trace_files && n_final > 0
-        traces_raw = double(output_ps.temporal_weights);
+    % Colleague-style trace export (Z + raw) — same cells as deltaF_over_F / dff_trace_source
+    if save_trace_files && size(deltaF_over_F, 2) > 0
+        traces_raw = double(temporal_weights);
         traces_Z   = (traces_raw - mean(traces_raw, 1)) ./ max(std(traces_raw, 0, 1), 1e-10);
         save(fullfile(output_folder, [curr_header, '_traces_raw_Z.mat']), 'traces_raw', 'traces_Z', 'deltaF_over_F', '-v7.3');
         disp('  Saved: _traces_raw_Z.mat');
